@@ -4,11 +4,8 @@
     "codeowners": [
         "@danfulton72"
     ],
-    "config_flow": true,
-    "dependencies": [],
     "documentation": "https://github.com/danfulton72/HASS-Machinebox-Facebox",
-    "iot_class": "local_polling",
-    "issue_tracker": "github.com/danfulton72/HASS-Machinebox-Faceboxissues",
-    "requirements": [],
+    "iot_class": "local_push",
+    "issue_tracker": "https://github.com/danfulton72/HASS-Machinebox-Faceboxissues",
     "version": "0.0.1"
 }
