@@ -1,10 +1,10 @@
-"""Tests for the Facebox custom integration."""
+"""Tests for the Facebox API helpers."""
 from http import HTTPStatus
 
 import requests
 import requests_mock
 
-from custom_components.facebox import image_processing as facebox
+from custom_components.facebox import api as facebox
 
 MOCK_HEALTH = {"success": True, "hostname": "facebox-host"}
 MOCK_FACE = {
