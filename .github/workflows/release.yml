@@ -1,0 +1,79 @@
+name: Release merged pull request
+
+on:
+  pull_request:
+    branches: [master]
+    types: [closed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-master
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact merged commit with tags
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Derive next version from highest semantic Git tag
+        id: version
+        run: |
+          git fetch --force --tags origin
+          VERSION=$(python scripts/version.py next)
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Sync release manifest to derived version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          SYNCED_VERSION=$(python scripts/version.py sync-manifest-next)
+          test "$SYNCED_VERSION" = "$VERSION"
+
+      - name: Commit synchronized release manifest
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add custom_components/facebox/manifest.json
+          if ! git diff --cached --quiet; then git commit -m "Sync manifest for ${TAG}"; fi
+          echo "release_sha=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Create and push semantic release tag
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then exit 1; fi
+          git tag -a "$TAG" -m "Release $TAG" "$release_sha"
+          git push origin "refs/tags/${TAG}"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes
+
+      - name: Sync master manifest to highest released tag
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git fetch --force origin master --tags
+          git checkout -B master origin/master
+          python scripts/version.py sync-manifest-current >/dev/null
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add custom_components/facebox/manifest.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Sync manifest to ${TAG} [skip ci]"
+          git pull --rebase origin master
+          git push origin HEAD:master

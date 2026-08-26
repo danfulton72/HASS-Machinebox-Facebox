@@ -1,0 +1,22 @@
+{
+  "services": {
+    "teach_face": {
+      "description": "Teach Facebox a face using a local image file.",
+      "fields": {
+        "entity_id": {
+          "description": "Optional Facebox image-processing entity to teach.",
+          "name": "Entity"
+        },
+        "file_path": {
+          "description": "Path to a JPG or PNG allowed by Home Assistant.",
+          "name": "File path"
+        },
+        "name": {
+          "description": "Name to associate with the face.",
+          "name": "Name"
+        }
+      },
+      "name": "Teach face"
+    }
+  }
+}

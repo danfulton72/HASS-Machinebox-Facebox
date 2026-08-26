@@ -1,0 +1,22 @@
+teach_face:
+  name: Teach face
+  description: Teach Facebox a face using a local image file.
+  fields:
+    entity_id:
+      name: Entity
+      description: Optional Facebox image-processing entity to teach.
+      selector:
+        entity:
+          domain: image_processing
+    name:
+      name: Name
+      description: Name to associate with the face.
+      required: true
+      selector:
+        text:
+    file_path:
+      name: File path
+      description: Path to a JPG or PNG allowed by Home Assistant.
+      required: true
+      selector:
+        text:
