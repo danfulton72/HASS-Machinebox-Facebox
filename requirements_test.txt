@@ -1,0 +1,4 @@
+homeassistant
+pytest
+pyflakes
+requests-mock
