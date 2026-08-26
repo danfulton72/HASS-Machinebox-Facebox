@@ -1,140 +1,116 @@
-# HASS-Machinebox-Facebox
+# Machinebox Facebox for Home Assistant
 
-Home-Assistant component for face detection (number of faces) and identification (recognising trained faces) using [facebox](https://machineboxio.com/docs/facebox/teaching-facebox). The stable version of the component is added to Home-Assistant, and this repo should be considered development.
+A Home Assistant custom integration for face detection and recognition using a local [Machinebox Facebox](https://machinebox.io/) service.
 
-Place the `custom_components` folder in your configuration directory (or add its contents to an existing `custom_components` folder).
+This repository is packaged for HACS and uses Home Assistant's `image_processing` building-block integration. Configuration remains YAML-based because Facebox provides image-processing platform entities sourced from camera entities.
 
-Add to your Home-Assistant config:
+## Installation
+
+### HACS
+
+1. Add this repository to HACS as a custom repository with category **Integration**.
+2. Install **Machinebox Facebox**.
+3. Restart Home Assistant.
+
+### Manual
+
+Copy `custom_components/facebox` into your Home Assistant `custom_components` directory, then restart Home Assistant.
+
+## Configuration
+
+Add a Facebox image-processing platform to `configuration.yaml`:
 
 ```yaml
 image_processing:
   - platform: facebox
-    ip_address: localhost # or e.g. 192.168.0.1
+    ip_address: 192.168.0.10
     port: 8080
-    username: my_username
-    password: my_password
+    username: my_username   # optional
+    password: my_password   # optional
     source:
-      - entity_id: camera.local_file
+      - entity_id: camera.front_door
+        name: Front Door Facebox
 ```
-Configuration variables:
-- **ip_address**: the ip address of your facebox instance.
-- **port**: the port of your facebox instance.
-- **username**: (Optional) the username if you are using authentication.
-- **password**: (Optional) the password if you are using authentication
-- **source**: Must be a camera.
 
+`ip_address` is the host or IP address of the Facebox service. `port` is the HTTP port, normally `8080`. `username` and `password` are optional HTTP Basic Auth credentials. `source` contains one or more Home Assistant camera entities.
 
-The component adds an `image_processing` entity where the state of the entity is the total number of faces that are found in the camera image. The name and confidence of matched faces are in the `matched_faces` attribute, whilst the `faces` attribute additionally lists the matching `image_id` and `bounding_box` of matched faces. An `image_processing.detect_face` event is fired for every matched face.
+The resulting `image_processing` entity reports Facebox detections and exposes `faces`, `matched_faces`, `total_faces`, `total_matched_faces`, and the Facebox hostname. Home Assistant fires `image_processing.detect_face` events for detected faces that meet the configured confidence threshold.
 
-## Automations
-Use the events fired to trigger automations. The following example automation fires a notification with a local_file camera image when Ringo Star is recognised:
+## Scan on demand
+
+Home Assistant's image-processing building block polls by default. For motion-triggered cameras you can set a long `scan_interval` and explicitly call `image_processing.scan` when a fresh image is available.
 
 ```yaml
-- id: '12345'
-  alias: Ringo Starr recognised
-  trigger:
-    platform: event
-    event_type: image_processing.detect_face
-    event_data:
-      name: 'Ringo_Starr'
-  action:
-    service: notify.platform
-    data_template:
-      message: Ringo_Starr recognised with probability {{ trigger.event.data.confidence }}
-      title: Door-cam notification
+image_processing:
+  - platform: facebox
+    ip_address: 192.168.0.10
+    port: 8080
+    scan_interval: 10000
+    source:
+      - entity_id: camera.front_door
 ```
 
-## Teach service
-The service `image_processing.facebox_teach_face` can be used to teach Facebox faces, as described in [this blog post](https://towardsdatascience.com/every-superheros-secret-identity-wouldn-t-fool-modern-face-recognition-32c6fda07bb9). Call the service from the `dev-service` panel. Valid image filetypes are those ending in `.jpg`, `.png`, `.jpeg`. Example valid service data is:
+Then call:
+
 ```yaml
-{
-  "entity_id": "image_processing.facebox_local_file",
-  "name": "superman",
-  "file_path": "/Users/robincole/.homeassistant/images/superman_1.jpeg"
-}
+action: image_processing.scan
+target:
+  entity_id: image_processing.front_door_facebox
 ```
 
-You can use an automation to receive a notification when you train a face:
+## Teach a face
+
+The preferred action is `facebox.teach_face`:
+
 ```yaml
-- id: '1533703568569'
-  alias: Face taught
-  trigger:
-  - event_data:
-      service: facebox_teach_face
-    event_type: call_service
-    platform: event
-  condition: []
-  action:
-  - service: notify.pushbullet
-    data_template:
-      message: '{{ trigger.event.data.service_data.name }} taught
-      with file {{ trigger.event.data.service_data.file_path }}'
-      title: Face taught notification
+action: facebox.teach_face
+data:
+  entity_id: image_processing.front_door_facebox
+  name: Ringo_Starr
+  file_path: /config/images/ringo.jpg
 ```
 
-Any errors on teaching will be reported in the logs. If you enable [system_log](https://www.home-assistant.io/components/system_log/) events:
+The image path must be allowed by Home Assistant and must be a `.jpg`, `.jpeg`, or `.png` file. The historical `image_processing.facebox_teach_face` action is also registered for compatibility with existing automations.
+
+## Example recognition automation
+
 ```yaml
-system_log:
-  fire_event: true
+- alias: Notify when Ringo is recognised
+  triggers:
+    - trigger: event
+      event_type: image_processing.detect_face
+      event_data:
+        name: Ringo_Starr
+  actions:
+    - action: notify.notify
+      data:
+        title: Door camera
+        message: >-
+          Ringo Starr recognised with confidence
+          {{ trigger.event.data.confidence }}
 ```
 
-You can create an automation to receive notifications on Facebox errors:
-```yaml
-- id: '1533703568577'
-  alias: Facebox error
-  trigger:
-    platform: event
-    event_type: system_log_event
-  condition:
-    condition: template
-    value_template: '{{ "facebox" in trigger.event.data.message }}'
-  action:
-  - service: notify.pushbullet
-    data_template:
-      message: '{{ trigger.event.data.message }}'
-      title: Facebox error
+## Running Facebox
+
+A typical container invocation is:
+
+```bash
+docker run -p 8080:8080 -e "MB_KEY=$MB_KEY" machinebox/facebox
 ```
 
-## Appearence on HA front-end
+With HTTP Basic Auth:
 
-<p align="center">
-<img src="https://github.com/robmarkcole/HASS-Machinebox-Facebox/blob/master/usage.png" width="750">
-</p>
-
-#### Run Machinebox
-Run facebox with:
-```
-MB_KEY="INSERT-YOUR-KEY-HERE"
-
-sudo docker run -p 8080:8080 -e "MB_KEY=$MB_KEY" machinebox/facebox
+```bash
+docker run \
+  -e "MB_BASICAUTH_USER=my_username" \
+  -e "MB_BASICAUTH_PASS=my_password" \
+  -e "MB_KEY=$MB_KEY" \
+  -p 8080:8080 \
+  machinebox/facebox
 ```
 
-To run [with authentication](https://machinebox.io/docs/machine-box-apis#basic-authentication):
-```
-sudo docker run -e "MB_BASICAUTH_USER=my_username" -e "MB_BASICAUTH_PASS=my_password" -p 8080:8080 -e "MB_KEY=$MB_KEY" machinebox/facebox
-```
+Machinebox Facebox itself is an external project and may have its own licensing, availability, or maintenance constraints. This integration only connects Home Assistant to a running compatible Facebox API.
 
-If you receive errors complaining of lack of RAM, but you do have sufficient ram, try the `machinebox/facebox_noavx` container [here](https://hub.docker.com/r/machinebox/facebox_noavx/). This image is Facebox compiled without [AVX](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions) instructions.
+## Development and validation
 
-#### Machinebox alternative
-[@RdeLange](https://github.com/RdeLange) has written a facebox clone that has none of the restrictions associated with facebox, and the repo is at https://github.com/RdeLange/robinvision
-
-#### Optimising resources
-[Image processing components](https://www.home-assistant.io/components/image_processing/) process the image from a camera at a fixed period given by the `scan_interval`. This leads to excessive computation if the image on the camera hasn't changed (for example if you are using a [local file camera](https://www.home-assistant.io/components/camera.local_file/) to display an image captured by a motion triggered system and this doesn't change often). The default `scan_interval` [is 10 seconds](https://github.com/home-assistant/home-assistant/blob/98e4d514a5130b747112cc0788fc2ef1d8e687c9/homeassistant/components/image_processing/__init__.py#L27). You can override this by adding to your config `scan_interval: 10000` (setting the interval to 10,000 seconds), and then call the `scan` [service](https://github.com/home-assistant/home-assistant/blob/98e4d514a5130b747112cc0788fc2ef1d8e687c9/homeassistant/components/image_processing/__init__.py#L62) when you actually want to process a camera image. So in my setup, I use an automation to call `scan` when a new image is available.
-
-You can also reduce the time for face detection (counting number of faces only) by setting the environment variable `-e MB_FACEBOX_DISABLE_RECOGNITION=true` when you `run` Docker. As the variable name states, this disables facial recognition and in my experience detection time is reduced by 50-75%. Note that the `teach` endpoint is not available when you disable recognition.
-
-#### Training
-You can use [this script](https://github.com/robmarkcole/facebox_python) to train facebox. Note that training is only possible when facebox is in recognition mode (i.e. default behaviour of `MB_FACEBOX_DISABLE_RECOGNITION=false`).
-
-## State file
-
-Once you have trained facebox you can download the state file using:
-```curl
-curl -o state.facebox http://localhost:8080/facebox/state
-```
-
-If you restart facebox and loose the state, you can upload your saved state file using:
-```curl
-curl -X POST -F 'file=@state.facebox' http://localhost:8080/facebox/state
-```
+Pull requests run Python compilation, pyflakes, pytest, Home Assistant hassfest, HACS validation, and a manifest/tag synchronization gate. Merging a pull request to `master` creates the next semantic patch release automatically.
